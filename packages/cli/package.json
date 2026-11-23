@@ -1,0 +1,26 @@
+{
+  "name": "drawboardmafia",
+  "version": "0.1.0",
+  "description": "CLI for .board files: render, format, check, merge, diff",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "dbm": "./dist/dbm.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "perfect-freehand": "^1.2.3"
+  },
+  "devDependencies": {
+    "@dbm/core": "workspace:*",
+    "@dbm/format": "workspace:*",
+    "@dbm/render": "workspace:*",
+    "tsup": "^9.0.0"
+  }
+}

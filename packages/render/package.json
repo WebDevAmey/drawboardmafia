@@ -1,0 +1,14 @@
+{
+  "name": "@dbm/render",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@dbm/core": "workspace:*",
+    "@dbm/format": "workspace:*",
+    "perfect-freehand": "^1.2.3"
+  }
+}
