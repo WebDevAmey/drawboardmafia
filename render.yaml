@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: drawboardmafia-relay
+    runtime: node
+    plan: free
+    buildCommand: npx -y pnpm@10.30.3 install --frozen-lockfile
+    startCommand: npx -y pnpm@10.30.3 relay
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
