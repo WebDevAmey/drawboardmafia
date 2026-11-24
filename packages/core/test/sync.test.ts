@@ -74,6 +74,32 @@ describe('sync', () => {
     expect(state(b.get())).toBe(state(a.get()));
   });
 
+  test('regression: concurrent create, undo and relabel converge', () => {
+    const net = network(2);
+    const [a, b] = net.stores as [Store, Store];
+    b.transact((d) => d.put(box('e', 0)));
+    net.advance();
+    a.transact((d) => d.put(box('e', -4)));
+    b.undo();
+    a.transact((d) => d.update('e', { label: 'x' }));
+    net.deliver(0);
+    net.deliver(1);
+    expect(state(a.get())).toBe(state(b.get()));
+  });
+
+  test('regression: undo re-create beats an older concurrent label', () => {
+    const net = network(3);
+    const [, b, c] = net.stores as [Store, Store, Store];
+    b.transact((d) => d.put(box('e', 0)));
+    net.deliver(2, 1);
+    b.transact((d) => d.update('e', { label: 'l' }));
+    c.transact((d) => d.remove('e'));
+    c.undo();
+    for (let i = 0; i < 3; i++) net.deliver(i);
+    expect(state(b.get())).toBe(state(c.get()));
+    expect(state(net.stores[0]!.get())).toBe(state(c.get()));
+  });
+
   test('random concurrent sessions converge (property)', () => {
     const action = fc.tuple(
       fc.integer({ min: 0, max: 2 }), // client
@@ -102,7 +128,7 @@ describe('sync', () => {
         expect(b).toBe(a);
         expect(c).toBe(a);
       }),
-      { numRuns: 300 },
+      { numRuns: Number(process.env.SYNC_RUNS ?? 300) },
     );
   }, 30_000);
 });

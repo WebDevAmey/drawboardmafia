@@ -31,6 +31,11 @@ export interface Sync {
 const key = (id: Id, p: string) => `${id}\u0000${p}`;
 const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
 const ORDER = '\u0000order';
+const WHOLE = '\u0000*';
+
+/** Drops keys whose value is undefined. */
+const compact = (o: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as unknown as Element;
 
 export function createClock(clientId: string, now: () => number = Date.now) {
   let ms = 0;
@@ -66,6 +71,8 @@ export function createSync(store: Store, clientId: string, send: (ops: Op[]) => 
   let applying = false;
 
   const newer = (k: string, t: string) => (clocks.get(k) ?? '') < t;
+  /** A property edit must beat both its own clock and the element's last whole-element put. */
+  const newerProp = (id: Id, p: string, t: string) => newer(key(id, p), t) && newer(key(id, WHOLE), t);
   const maxClock = (id: Id) => {
     let m = '';
     for (const [k, t] of clocks) if (k.startsWith(`${id}\u0000`) && t > m) m = t;
@@ -84,6 +91,7 @@ export function createSync(store: Store, clientId: string, send: (ops: Op[]) => 
       if (!old) {
         const t = clock.next();
         for (const prop of Object.keys(el)) clocks.set(key(id, prop), t);
+        clocks.set(key(id, WHOLE), t);
         tombs.delete(id);
         ops.push({ k: 'put', id, el, t });
         continue;
@@ -133,38 +141,47 @@ export function createSync(store: Store, clientId: string, send: (ops: Op[]) => 
             switch (op.k) {
               case 'put': {
                 const tomb = tombs.get(op.id);
-                if (tomb && tomb >= op.t) break;
-                const cur = d.get(op.id) ?? graveyard.get(op.id);
                 const live = !!d.get(op.id);
+                const cur = d.get(op.id) ?? graveyard.get(op.id);
                 const next = { ...(cur ?? {}) } as Record<string, unknown>;
                 const incoming = op.el as unknown as Record<string, unknown>;
+                const wholeNewer = newer(key(op.id, WHOLE), op.t);
                 for (const prop of new Set([...Object.keys(next), ...Object.keys(incoming)])) {
                   if (!newer(key(op.id, prop), op.t)) continue;
                   clocks.set(key(op.id, prop), op.t);
-                  if (incoming[prop] === undefined) delete next[prop];
-                  else next[prop] = incoming[prop];
+                  next[prop] = incoming[prop]; // undefined marks a removed property
+                }
+                if (wholeNewer) clocks.set(key(op.id, WHOLE), op.t);
+                if (tomb && tomb >= op.t) {
+                  // lost to a later delete: keep its values in the graveyard so a resurrection is consistent
+                  graveyard.set(op.id, compact(next));
+                  break;
                 }
                 tombs.delete(op.id);
                 graveyard.delete(op.id);
                 if (live) d.update(op.id, next);
-                else d.put(next as unknown as Element);
+                else d.put(compact(next));
                 break;
               }
               case 'set': {
                 const k = key(op.id, op.p);
-                if (!newer(k, op.t)) break;
+                if (!newerProp(op.id, op.p, op.t)) break;
                 clocks.set(k, op.t);
                 const v = op.v === null ? undefined : op.v;
                 if (d.get(op.id)) d.update(op.id, { [op.p]: v });
                 else {
-                  // edit after a delete: resurrect when the edit is newer than the delete
                   const ghost = graveyard.get(op.id);
+                  if (!ghost) break;
+                  const next = { ...ghost } as Record<string, unknown>;
+                  if (v === undefined) delete next[op.p];
+                  else next[op.p] = v;
                   const tomb = tombs.get(op.id);
-                  if (ghost && tomb && op.t > tomb) {
+                  if (tomb && op.t > tomb) {
+                    // edit after a delete wins: resurrect
                     tombs.delete(op.id);
                     graveyard.delete(op.id);
-                    d.put({ ...ghost, [op.p]: v } as Element);
-                  }
+                    d.put(next as unknown as Element);
+                  } else graveyard.set(op.id, next as unknown as Element);
                 }
                 break;
               }
