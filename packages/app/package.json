@@ -11,6 +11,7 @@
   "dependencies": {
     "@dbm/core": "workspace:*",
     "@dbm/format": "workspace:*",
+    "@dbm/relay": "workspace:*",
     "@dbm/render": "workspace:*",
     "lucide-react": "^1.79.0",
     "perfect-freehand": "^1.2.3",
