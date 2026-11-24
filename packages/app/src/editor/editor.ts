@@ -4,15 +4,21 @@ import {
   type Rect, type Store,
 } from '@dbm/core';
 import { drawBoard, type Camera, type ThemeName } from '@dbm/render';
+import { assetImage, importImage } from '../assets';
+import type { Peer } from '../collab/session';
+import { LIBRARY, LIBRARY_MIME } from '../library';
 import {
-  commitText, connectorId, deleteElements, duplicate, makeNode, pasteText, restack, selectionText,
+  commitText, connectorId, deleteElements, duplicate, insertElements, makeNode, pasteText, restack, selectionText,
 } from './actions';
+
+const ERASER_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\'><circle cx=\'10\' cy=\'10\' r=\'7\' fill=\'white\' stroke=\'black\' stroke-width=\'1.5\'/></svg>')}") 10 10, crosshair`;
 import { drawOverlay, handleAt, type Handle } from './overlay';
 
-export type Tool = 'select' | 'hand' | 'box' | 'ellipse' | 'diamond' | 'arrow' | 'ink' | 'text' | 'note';
+export type Tool = 'select' | 'hand' | 'box' | 'ellipse' | 'diamond' | 'arrow' | 'line' | 'ink' | 'text' | 'note' | 'eraser';
 
 export interface EditorState {
   tool: Tool;
+  libraryOpen: boolean;
   selection: Id[];
   editingId?: Id;
   zoom: number;
@@ -30,7 +36,8 @@ type Gesture =
   | { kind: 'resize'; id: Id; handle: Handle; start: P; orig: Rect; key: string }
   | { kind: 'marquee'; start: P; now: P; additive: Id[] }
   | { kind: 'create'; type: NodeType; start: P; now: P }
-  | { kind: 'arrow'; from: End; start: P; now: P; target?: Id }
+  | { kind: 'arrow'; head: 'end' | 'none'; from: End; start: P; now: P; target?: Id }
+  | { kind: 'erase'; hits: Set<Id>; last: P }
   | { kind: 'ink'; pts: P[]; pressures: number[] };
 
 const MIN_ZOOM = 0.1;
@@ -43,6 +50,13 @@ export class Editor {
   gesture?: Gesture;
   hover?: Id;
   pointer: P = { x: 0, y: 0 };
+  pointerOnCanvas = false;
+  /** Remote collaborators (set by the live session). */
+  peers = new Map<string, Peer>();
+  /** Called when cursor or selection changes (live presence). */
+  onPresence?: () => void;
+  /** User-facing notices (toasts). */
+  onMessage?: (m: string) => void;
   private listeners = new Set<() => void>();
   private size = { width: 0, height: 0 };
   private dpr = 1;
@@ -52,7 +66,7 @@ export class Editor {
   private spaceDown = false;
 
   constructor(public store: Store, theme: ThemeName) {
-    this.state = { tool: 'select', selection: [], zoom: 1, theme, paneOpen: false, canUndo: false, canRedo: false };
+    this.state = { tool: 'select', libraryOpen: false, selection: [], zoom: 1, theme, paneOpen: false, canUndo: false, canRedo: false };
     store.subscribe(() => {
       const board = store.get();
       const live = this.state.selection.filter((id) => board.elements.some((e) => e.id === id));
@@ -89,6 +103,7 @@ export class Editor {
 
   select(ids: Id[]) {
     this.set({ selection: ids });
+    this.onPresence?.();
   }
 
   // ---------- coordinates ----------
@@ -161,6 +176,17 @@ export class Editor {
       on('pointercancel', () => this.cancelGesture()),
       on('dblclick', (e) => this.onDoubleClick(e, container)),
       on('wheel', (e) => this.onWheel(e, container), { passive: false }),
+      on('pointerleave', () => {
+        this.pointerOnCanvas = false;
+        this.onPresence?.();
+      }),
+      on('dragover', (e) => {
+        if (e.dataTransfer?.types.includes('Files') || e.dataTransfer?.types.includes(LIBRARY_MIME)) {
+          e.preventDefault();
+          e.dataTransfer!.dropEffect = 'copy';
+        }
+      }),
+      on('drop', (e) => this.onDrop(e, container)),
     ];
     const keyDown = (e: KeyboardEvent) => this.onKeyDown(e);
     const keyUp = (e: KeyboardEvent) => {
@@ -195,9 +221,28 @@ export class Editor {
 
   private draw() {
     if (!this.scene || !this.overlay) return;
-    const opts = { theme: this.state.theme, camera: this.camera, width: this.size.width, height: this.size.height, dpr: this.dpr, editingId: this.state.editingId, grid: this.board.grid ?? 'dots' } as const;
+    const g = this.gesture;
+    const opts = {
+      theme: this.state.theme, camera: this.camera, width: this.size.width, height: this.size.height, dpr: this.dpr,
+      editingId: this.state.editingId, grid: this.board.grid ?? 'none', images: assetImage,
+      dim: g?.kind === 'erase' ? g.hits : undefined,
+    } as const;
     drawBoard(this.scene.getContext('2d')!, this.board, opts);
     drawOverlay(this.overlay.getContext('2d')!, this, opts);
+    // ease remote cursors toward their targets
+    let moving = false;
+    for (const p of this.peers.values()) {
+      if (!p.cursor) continue;
+      const s = p.shown ?? p.cursor;
+      const dx = p.cursor.x - s.x;
+      const dy = p.cursor.y - s.y;
+      if (Math.hypot(dx, dy) < 0.3) p.shown = p.cursor;
+      else {
+        p.shown = { x: s.x + dx * 0.35, y: s.y + dy * 0.35 };
+        moving = true;
+      }
+    }
+    if (moving) this.requestDraw();
   }
 
   // ---------- pointer input ----------
@@ -257,11 +302,15 @@ export class Editor {
         this.startEditing(t.id);
         return;
       }
-      case 'arrow': {
+      case 'arrow': case 'line': {
         const target = this.nodeAt(w);
-        this.gesture = { kind: 'arrow', from: target ? { id: target } : { x: Math.round(w.x), y: Math.round(w.y) }, start: w, now: w, target };
+        this.gesture = { kind: 'arrow', head: tool === 'arrow' ? 'end' : 'none', from: target ? { id: target } : { x: Math.round(w.x), y: Math.round(w.y) }, start: w, now: w, target };
         return;
       }
+      case 'eraser':
+        this.gesture = { kind: 'erase', hits: new Set(), last: w };
+        this.eraseAt(w);
+        return;
       case 'ink':
         this.gesture = { kind: 'ink', pts: [w], pressures: [e.pointerType === 'pen' ? e.pressure : 0.5] };
         return;
@@ -272,7 +321,10 @@ export class Editor {
     const s = this.local(e, el);
     const w = this.toWorld(s);
     this.pointer = w;
+    this.pointerOnCanvas = true;
+    this.onPresence?.();
     const g = this.gesture;
+    if (this.state.tool === 'eraser') this.requestDraw();
     if (!g) {
       const hover = this.state.tool === 'select' || this.state.tool === 'arrow' ? hitTest(this.board, w, 4 / this.camera.zoom) : undefined;
       if (hover !== this.hover) {
@@ -295,7 +347,8 @@ export class Editor {
         return;
       }
       case 'resize':
-        this.applyResize(g, w, e.shiftKey);
+        const isImage = this.board.elements.find((x) => x.id === g.id)?.type === 'image';
+        this.applyResize(g, w, isImage ? !e.shiftKey : e.shiftKey);
         return;
       case 'marquee': case 'create':
         g.now = w;
@@ -306,6 +359,13 @@ export class Editor {
         const t = this.nodeAt(w);
         g.target = t && !(isBoundEnd(g.from) && g.from.id === t) ? t : undefined;
         this.requestDraw();
+        return;
+      }
+      case 'erase': {
+        // sample along the segment so fast strokes don't skip elements
+        const steps = Math.max(1, Math.ceil((Math.hypot(w.x - g.last.x, w.y - g.last.y) * this.camera.zoom) / 6));
+        for (let i = 1; i <= steps; i++) this.eraseAt({ x: g.last.x + ((w.x - g.last.x) * i) / steps, y: g.last.y + ((w.y - g.last.y) * i) / steps });
+        g.last = w;
         return;
       }
       case 'ink': {
@@ -352,13 +412,16 @@ export class Editor {
         if (len < 8 && !g.target) break;
         const to: End = g.target ? { id: g.target } : { x: Math.round(g.now.x), y: Math.round(g.now.y) };
         const c: Connector = {
-          id: connectorId(this.board, g.from, to), type: 'arrow', from: g.from, to, head: 'end', route: 'straight',
+          id: connectorId(this.board, g.from, to), type: 'arrow', from: g.from, to, head: g.head, route: 'straight',
           stroke: 'ink', fill: 'none', width: 2, dash: 'solid',
         };
         this.store.transact((d) => d.put(c));
         this.set({ selection: [c.id], tool: 'select' });
         break;
       }
+      case 'erase':
+        if (g.hits.size) deleteElements(this.store, [...g.hits]);
+        break;
       case 'ink': {
         if (g.pts.length < 2) g.pts.push({ x: g.pts[0]!.x + 0.5, y: g.pts[0]!.y + 0.5 }), g.pressures.push(g.pressures[0]!);
         const ox = Math.round(g.pts[0]!.x);
@@ -403,6 +466,7 @@ export class Editor {
       if (h) return h === 'n' || h === 's' ? 'ns-resize' : h === 'e' || h === 'w' ? 'ew-resize' : h === 'nw' || h === 'se' ? 'nwse-resize' : 'nesw-resize';
       return hover ? 'move' : 'default';
     }
+    if (tool === 'eraser') return ERASER_CURSOR;
     return tool === 'text' ? 'text' : 'crosshair';
   }
 
@@ -542,6 +606,12 @@ export class Editor {
 
   private onPaste(e: ClipboardEvent) {
     if (isTyping(e.target)) return;
+    const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'));
+    if (file) {
+      e.preventDefault();
+      void this.insertImage(file, this.pointerInView() ? this.pointer : this.viewportCenter());
+      return;
+    }
     const text = e.clipboardData?.getData('text/plain');
     if (!text) return;
     e.preventDefault();
@@ -552,6 +622,65 @@ export class Editor {
   private pointerInView(): boolean {
     const s = this.toScreen(this.pointer);
     return s.x >= 0 && s.y >= 0 && s.x <= this.size.width && s.y <= this.size.height;
+  }
+
+  // ---------- eraser, images, library ----------
+
+  private eraseAt(w: P) {
+    const g = this.gesture;
+    if (g?.kind !== 'erase') return;
+    const hit = hitTest(this.board, w, 6 / this.camera.zoom);
+    if (hit && !g.hits.has(hit) && !this.board.elements.find((x) => x.id === hit)?.locked) {
+      g.hits.add(hit);
+      this.requestDraw();
+    }
+  }
+
+  /** Opens the file picker (set by the UI). */
+  onPickImage?: () => void;
+
+  async insertImage(file: Blob, at: P = this.viewportCenter()) {
+    try {
+      const { name, width, height } = await importImage(file);
+      const scale = Math.min(1, 480 / Math.max(width, height));
+      const w = Math.max(8, Math.round(width * scale));
+      const h = Math.max(8, Math.round(height * scale));
+      const node = { ...makeNode(this.board, 'image', { x: at.x - w / 2, y: at.y - h / 2, w, h }), asset: name } as NodeEl;
+      this.store.transact((d) => d.put(node));
+      this.set({ selection: [node.id], tool: 'select' });
+    } catch (err) {
+      this.onMessage?.((err as Error).message || 'Could not add that image');
+    }
+  }
+
+  insertLibraryItem(id: string, at: P = this.viewportCenter()) {
+    const item = LIBRARY.find((i) => i.id === id);
+    if (!item) return;
+    const ids = insertElements(this.store, item.make(), { x: 0, y: 0 });
+    // centre the inserted group on the drop point
+    const byId = new Map(this.board.elements.map((e) => [e.id, e]));
+    const r = unionRects(ids.map((i) => elementBounds(byId.get(i)!, byId)).filter((b): b is Rect => !!b));
+    if (r) {
+      const dx = Math.round(at.x - (r.x + r.w / 2));
+      const dy = Math.round(at.y - (r.y + r.h / 2));
+      this.store.transact((d) => {
+        for (const i of ids) {
+          const el = d.get(i)!;
+          if (isNode(el) && el.x !== undefined && el.y !== undefined) d.update(i, { x: el.x + dx, y: el.y + dy });
+        }
+      }, { mergeKey: `lib-${++gestureSeq}` });
+    }
+    this.set({ selection: ids, tool: 'select' });
+  }
+
+  private onDrop(e: DragEvent, el: HTMLElement) {
+    e.preventDefault();
+    const at = this.toWorld(this.local(e, el));
+    const lib = e.dataTransfer?.getData(LIBRARY_MIME);
+    if (lib) return this.insertLibraryItem(lib, at);
+    const file = [...(e.dataTransfer?.files ?? [])].find((f) => f.type.startsWith('image/'));
+    if (file) void this.insertImage(file, at);
+    else if (e.dataTransfer?.files.length) this.onMessage?.('Only images can be dropped on the board');
   }
 
   // ---------- keyboard ----------
@@ -585,7 +714,8 @@ export class Editor {
     switch (e.key) {
       case 'Escape':
         this.gesture = undefined;
-        if (this.state.tool !== 'select') this.setTool('select');
+        if (this.state.libraryOpen) this.set({ libraryOpen: false });
+        else if (this.state.tool !== 'select') this.setTool('select');
         else this.select([]);
         return handled();
       case 'Delete': case 'Backspace':
@@ -601,7 +731,9 @@ export class Editor {
       case 'ArrowUp': return handled(), this.nudge(0, -step);
       case 'ArrowDown': return handled(), this.nudge(0, step);
     }
-    const tools: Record<string, Tool> = { KeyV: 'select', KeyH: 'hand', KeyR: 'box', KeyO: 'ellipse', KeyD: 'diamond', KeyA: 'arrow', KeyP: 'ink', KeyT: 'text', KeyN: 'note' };
+    if (e.code === 'KeyI' && !e.shiftKey) return handled(), this.onPickImage?.();
+    if (e.code === 'KeyB' && !e.shiftKey) return handled(), this.set({ libraryOpen: !this.state.libraryOpen });
+    const tools: Record<string, Tool> = { KeyV: 'select', KeyH: 'hand', KeyR: 'box', KeyO: 'ellipse', KeyD: 'diamond', KeyA: 'arrow', KeyL: 'line', KeyP: 'ink', KeyT: 'text', KeyN: 'note', KeyE: 'eraser' };
     const tool = tools[e.code];
     if (tool && !e.shiftKey) {
       handled();

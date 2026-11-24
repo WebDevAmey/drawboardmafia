@@ -100,6 +100,19 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, editor: Editor, o: Dr
     }
   }
 
+  drawPeers(ctx, editor, byId);
+  if (editor.state.tool === 'eraser' && editor.pointerOnCanvas) {
+    const p = editor.toScreen(editor.pointer);
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = o.theme === 'dark' ? '#e6e6e3' : '#1f2328';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   const g = editor.gesture;
   if (!g) return;
   ctx.fillStyle = color;
@@ -149,5 +162,52 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, editor: Editor, o: Dr
     outline.forEach(([x, y], i) => (i ? ctx.lineTo(x!, y!) : ctx.moveTo(x!, y!)));
     ctx.closePath();
     ctx.fill();
+  }
+}
+
+/** Collaborators' selections (dashed, in their colour) and cursors with a name tag. */
+function drawPeers(ctx: CanvasRenderingContext2D, editor: Editor, byId: Map<Id, Element>) {
+  for (const p of editor.peers.values()) {
+    ctx.save();
+    ctx.strokeStyle = p.color;
+    ctx.fillStyle = p.color;
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.5;
+    for (const id of p.selection) {
+      const el = byId.get(id);
+      if (!el) continue;
+      if (isConnector(el)) outlineConnector(ctx, editor, el, byId);
+      else outlineNode(ctx, editor, el as NodeEl, 5 / editor.camera.zoom);
+    }
+    ctx.restore();
+    if (!p.shown) continue;
+    const s = editor.toScreen(p.shown);
+    ctx.save();
+    ctx.translate(Math.round(s.x), Math.round(s.y));
+    ctx.fillStyle = p.color;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, 15);
+    ctx.lineTo(4, 11.5);
+    ctx.lineTo(7, 18);
+    ctx.lineTo(9.5, 17);
+    ctx.lineTo(6.5, 10.5);
+    ctx.lineTo(11.5, 10.5);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+    ctx.font = '500 11.5px Inter, ui-sans-serif, system-ui, sans-serif';
+    const label = p.name.length > 24 ? `${p.name.slice(0, 23)}…` : p.name;
+    const w = ctx.measureText(label).width + 12;
+    ctx.beginPath();
+    ctx.roundRect(10, 18, w, 20, 6);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 16, 28.5);
+    ctx.restore();
   }
 }
