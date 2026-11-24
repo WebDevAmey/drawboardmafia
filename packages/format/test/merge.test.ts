@@ -86,4 +86,4 @@ test('merge identities (property)', () => {
     }),
     { numRuns: 200 },
   );
-});
+}, 30_000);

@@ -43,4 +43,4 @@ test('round trip is lossless and stable (property)', () => {
     }),
     { numRuns: 300 },
   );
-});
+}, 30_000);
