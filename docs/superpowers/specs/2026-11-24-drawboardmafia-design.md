@@ -81,11 +81,13 @@ board 1
 // Checkout flow
 api: box "API Gateway" @120,80 240x80 fill=blue
 db: cylinder "Postgres" @520,80
-cache: box "Redis"                      // no position: auto-placed
+// no position: auto-placed
+cache: box "Redis"
 api -> db "reads" route=elbow
-api -> cache dash=dotted
+api -- cache dash=dotted
 f1: frame "Checkout" @80,40 700x300 { api db cache }
-~a8f3kq ink @300,400 pts=Ab3_9fQ…       // freehand: opaque but stable
+// freehand: opaque but stable
+~a8f3kq: ink @300,400 pts=Ab3_9fQ…
 ```
 
 - **Canvas to text:** drag a node and only its `@x,y` token changes in the pane. The cursor and the scroll position in the pane are preserved.
@@ -102,7 +104,7 @@ f1: frame "Checkout" @80,40 700x300 { api db cache }
 
 **Implementation approach.**
 
-1. **Grammar.** A Lezer grammar in `packages/format/board.grammar` gives an incremental, error-tolerant parse tree shared by the editor (highlighting and folding) and the loader. Node IDs are `[a-z][a-z0-9_-]*` for named elements. Unnamed elements get a `~` plus a 6-character base36 random ID.
+1. **Grammar.** A hand-written, line-oriented lexer and parser (`packages/format/src/{lexer,parse}.ts`). Because the format is line-based, each line fails on its own and incremental parsing is unnecessary. The editor pane reuses the lexer through CodeMirror's `StreamLanguage`. This replaces an earlier Lezer plan; see [docs/format.md](../../format.md). Node IDs are `[a-z][a-z0-9_-]*` for named elements. Unnamed elements get a `~` plus a 6-character base36 random ID.
 2. **Canonical serializer.** It's deterministic: integer coordinates, fixed attribute order, default values omitted, and one element per line. Lines are ordered by the element's fractional z-index. Keys never change unless the element is restacked, so inserting an element adds a line without moving the others. Children of a frame are listed in its `{ }` member list, not nested, so lines never move when you re-parent an element.
 3. **Text to canvas.** On a debounced parse (100 ms), build an `id → attrs` map. Diff it against the store's current projection, then emit property-level ops through the same op pipeline as canvas edits, so collab and undo come for free.
    - **Error rule:** a line with a syntax error never causes a deletion. Its element keeps its last good state and the line gets an error underline.
@@ -301,7 +303,7 @@ f1: frame "Checkout" @80,40 700x300 { api db cache }
 | Strokes | `perfect-freehand` (2 kB) | The industry standard `[R§6]`. |
 | Sketchy style | `rough.js` (9 kB, lazy-loaded) | It's in maintenance mode `[R§6]`. Acceptable, since it's small enough to vendor if it ever needs a fix. |
 | Ordering | `fractional-indexing` (with jitter) | Stable z-order keys that merge cleanly. |
-| Text pane and grammar | CodeMirror 6 + Lezer (lazy-loaded) | Incremental, error-tolerant parsing that is shared with the loader and the CLI. |
+| Text pane and grammar | CodeMirror 6 (lazy-loaded) + our line lexer via `StreamLanguage` | The same tokenizer is used by the loader, the CLI and the editor. |
 | Local storage | IndexedDB (via `idb`), the File System Access API | Local-first. |
 | Relay | Cloudflare Worker + one Durable Object per room, with hibernating WebSockets | About $0 at hobby scale `[R§5]`. |
 | Encryption | WebCrypto AES-GCM-256 | Native and dependency-free. |
@@ -313,7 +315,7 @@ f1: frame "Checkout" @80,40 700x300 { api db cache }
 ```
 packages/
   core/      element schema, store (signals), ops, HLC clocks, history (undo), geometry, hit-testing, bindings
-  format/    Lezer grammar, parse/serialize (canonical), 3-way merge, semantic diff, importers (excalidraw, mermaid)
+  format/    line lexer + parser, parse/serialize (canonical), 3-way merge, semantic diff, importers (excalidraw, mermaid)
   render/    scene → Canvas2D renderer AND scene → SVG string renderer (shared shape geometry, no DOM dependency)
   app/       React chrome, tools/state machines, input pipeline, DSL pane, persistence adapters, collab client
   relay/     protocol types + Durable Object implementation (V2: Node adapter)
@@ -351,7 +353,7 @@ interface Base {
 type Shape = Base & { type: 'box'|'ellipse'|'diamond'|'cylinder'; label?: string; font?: Font; size?: 1|2|3|4 };
 type Text  = Base & { type: 'text'|'note'; text: string; font?: Font; size?: 1|2|3|4; align?: 'l'|'c'|'r' };
 type Code  = Base & { type: 'code'; text: string; lang?: string };
-type Arrow = Base & { type: 'arrow'|'line'; from: End; to: End; route: 'straight'|'elbow'|'curve';
+type Arrow = Base & { type: 'arrow'; head: 'end'|'both'|'none'; from: End; to: End; route: 'straight'|'elbow'|'curve';
                      via?: [number, number][]; head?: Heads; label?: string };
 type End   = { id: Id; anchor?: [number, number] } | { x: number; y: number };   // bound or free
 type Ink   = Base & { type: 'ink'; pts: string /* delta-encoded int16 x,y,pressure → base64url */ };
@@ -471,7 +473,7 @@ Estimates are in **full-time weeks**. Double them for evenings and weekends. Eac
 | **M0** | Foundations | 1 | The monorepo (pnpm, TS strict, Vite, Vitest, Playwright, ESLint and Prettier, CI on GitHub Actions), `core` schema types, HLC, `fractional-indexing` wrapper, the empty bench page | CI is green. HLC and fractional-index property tests pass. |
 | **M1** | Canvas engine | 3 | Camera (pan and zoom), scene and overlay canvases, rbush culling, box, ellipse, diamond and cylinder rendering, the select tool (click, marquee, move, resize, rotate), the store plus ops plus transactions, undo and redo, the bench harness | 10k boxes pan at 60 fps on the reference machine. The undo and redo property test (random op sequences return to their start) passes. |
 | **M2** | Tools and editing | 3 | Text, note and code block (DOM edit overlay), arrows with binding and elbow routing, ink (perfect-freehand), the eraser, frames, groups and locks, the style bar and palette tokens, snapping and guides, clipboard, themes, command palette, keymap plus structural navigation, the a11y live region | The F1 and F2 flows pass as Playwright tests. axe reports no serious violations. |
-| **M3** | Format and persistence | 2 | Lezer grammar, canonical serialise and parse, round-trip property tests, IndexedDB persistence, the board sidebar, Open folder, external change detection with three-way merge, PNG and SVG export (with embedded source), the `.excalidraw` and Mermaid importers | The round-trip property passes on 10k generated boards. An open-then-close leaves file bytes unchanged (test). The F3 flow passes in Chromium. |
+| **M3** | Format and persistence | 2 | Line parser, canonical serialise and parse, round-trip property tests, IndexedDB persistence, the board sidebar, Open folder, external change detection with three-way merge, PNG and SVG export (with embedded source), the `.excalidraw` and Mermaid importers | The round-trip property passes on 10k generated boards. An open-then-close leaves file bytes unchanged (test). The F3 flow passes in Chromium. |
 | **M4** | CLI | 1 | `dbm render, fmt, check, merge, diff, init, from-mermaid, from-excalidraw`, published to npm | A scripted git repo test passes: two branches edit the same board and `git merge` with the driver gives the expected canonical output with no markers. |
 | **M5** | Collaboration | 3 | The relay DO (protocol, seq, storage, snapshot compaction, limits), the encryption layer, the collab client (op batching, offline queue, reconnect), presence (cursors, selections, follow, soft-lock) | A fuzz test of 3 simulated clients with random ops, delays and disconnects converges to identical state. The two-browser Playwright F4 flow passes. Deployed to Cloudflare. |
 | **M6** | Two-way DSL pane | 2 | The CodeMirror pane with highlighting and position folding, text-to-canvas diff and apply with the error rule, canvas-to-text minimal patches with typing protection, auto-placement, Mermaid paste in the pane | Typing a 10-node diagram purely in the pane renders correctly. Dragging on the canvas while the pane is focused never moves the text cursor. |
