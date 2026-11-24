@@ -1,5 +1,6 @@
 import { bounds, isConnector, isNode, placeUnpositioned, unionRects, type Board, type Element, type Id, type Rect } from '@dbm/core';
-import { connectorPoints, connectorSvg } from './connectors';
+import { connectorSvg } from './connectors';
+import { connectorPoints } from '@dbm/core';
 import { nodeSvg, type AssetResolver } from './shapes';
 import { makeCtx, type ThemeName } from './theme';
 import { esc, num, tag } from './xml';

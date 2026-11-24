@@ -4,3 +4,5 @@ export * from './defaults';
 export * from './geometry';
 export * from './place';
 export * from './store';
+export * from './connector';
+export * from './hit';
