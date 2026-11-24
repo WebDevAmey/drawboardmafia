@@ -1,6 +1,7 @@
 import type { Board } from '@dbm/core';
 import { fromExcalidraw, fromMermaid, parse, serialize } from '@dbm/format';
 import { renderSvg, type ThemeName } from '@dbm/render';
+import { assetUrl } from '../assets';
 
 export function download(name: string, data: Blob) {
   const url = URL.createObjectURL(data);
@@ -11,7 +12,7 @@ export function download(name: string, data: Blob) {
 
 export const exportSvg = (board: Board, theme: ThemeName) => {
   const source = serialize(board);
-  return renderSvg(board, { theme, source });
+  return renderSvg(board, { theme, source, assets: assetUrl });
 };
 
 export async function exportPng(board: Board, theme: ThemeName, scale = 2): Promise<Blob> {

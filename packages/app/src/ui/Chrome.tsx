@@ -1,28 +1,52 @@
 import { emptyBoard, placeUnpositioned } from '@dbm/core';
 import { serialize } from '@dbm/format';
-import { Code2, Maximize, Menu, Minus, Moon, Plus, Redo2, Sun, Undo2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Code2, Maximize, Menu, MessageSquare, Minus, Moon, Plus, Redo2, Share2, Sun, Undo2 } from 'lucide-react';
+import { useRef, useState, useSyncExternalStore } from 'react';
+import type { Session } from '../collab/session';
+import { Avatars } from './Share';
 import type { Editor } from '../editor/editor';
 import { download, exportPng, exportSvg, importFile } from './export';
 import { useEditorState } from './useEditor';
 
-export function TopRight({ editor, themePref, setThemePref }: { editor: Editor; themePref: string; setThemePref: (t: 'light' | 'dark' | 'system') => void }) {
+export function TopRight({
+  editor, themePref, setThemePref, session, chatOpen, toggleChat, shareOpen, toggleShare,
+}: {
+  editor: Editor;
+  themePref: string;
+  setThemePref: (t: 'light' | 'dark' | 'system') => void;
+  session?: Session;
+  chatOpen: boolean;
+  toggleChat: () => void;
+  shareOpen: boolean;
+  toggleShare: () => void;
+}) {
   const { canUndo, canRedo, paneOpen, theme } = useEditorState(editor);
+  const live = useSyncExternalStore((cb) => session?.subscribe(cb) ?? (() => {}), () => session?.getState());
   return (
-    <div className="topright panel">
-      <button className="icon-btn" aria-label="Undo (Cmd+Z)" title="Undo — Cmd+Z" disabled={!canUndo} onClick={() => editor.undo()}><Undo2 size={18} /></button>
-      <button className="icon-btn" aria-label="Redo (Cmd+Shift+Z)" title="Redo — Cmd+Shift+Z" disabled={!canRedo} onClick={() => editor.redo()}><Redo2 size={18} /></button>
-      <span className="divider" />
-      <button
-        className="icon-btn"
-        aria-label={`Theme: ${themePref}`}
-        title={`Theme: ${themePref} (click to cycle)`}
-        onClick={() => setThemePref(themePref === 'system' ? (theme === 'dark' ? 'light' : 'dark') : themePref === 'dark' ? 'light' : 'system')}
-      >
-        {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
-      </button>
-      <button className="icon-btn" aria-pressed={paneOpen} aria-label="Board as text (Cmd+/)" title="Board as text — Cmd+/" onClick={() => editor.set({ paneOpen: !paneOpen })}>
-        <Code2 size={18} />
+    <div className="topright">
+      <div className="panel row">
+        <button className="icon-btn" aria-label="Undo (Cmd+Z)" title="Undo — Cmd+Z" disabled={!canUndo} onClick={() => editor.undo()}><Undo2 size={18} /></button>
+        <button className="icon-btn" aria-label="Redo (Cmd+Shift+Z)" title="Redo — Cmd+Shift+Z" disabled={!canRedo} onClick={() => editor.redo()}><Redo2 size={18} /></button>
+        <span className="divider" />
+        <button
+          className="icon-btn"
+          aria-label={`Theme: ${themePref}`}
+          title={`Theme: ${themePref} (click to cycle)`}
+          onClick={() => setThemePref(themePref === 'system' ? (theme === 'dark' ? 'light' : 'dark') : themePref === 'dark' ? 'light' : 'system')}
+        >
+          {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
+        </button>
+        <button className="icon-btn" aria-pressed={paneOpen} aria-label="Board as text (Cmd+/)" title="Board as text — Cmd+/" onClick={() => editor.set({ paneOpen: !paneOpen })}>
+          <Code2 size={18} />
+        </button>
+        <button className="icon-btn" aria-pressed={chatOpen} aria-label={`Chat${live?.unread ? `, ${live.unread} unread` : ''}`} title="Chat" onClick={toggleChat}>
+          <MessageSquare size={18} />
+          {!!live?.unread && !chatOpen && <span className="badge">{live.unread > 9 ? '9+' : live.unread}</span>}
+        </button>
+      </div>
+      <button className={`btn primary share-btn${session ? ' live' : ''}`} aria-expanded={shareOpen} onClick={toggleShare}>
+        {session ? <Avatars session={session} /> : <Share2 size={15} />}
+        <span>{session ? (live?.status === 'live' ? 'Live' : 'Connecting') : 'Share'}</span>
       </button>
     </div>
   );
