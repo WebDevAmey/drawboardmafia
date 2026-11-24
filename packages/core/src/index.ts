@@ -6,3 +6,4 @@ export * from './place';
 export * from './store';
 export * from './connector';
 export * from './hit';
+export * from './sync';
