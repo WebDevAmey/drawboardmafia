@@ -36,7 +36,7 @@ function attrValues(el: Element): Partial<Record<AttrKey, string>> {
   if (el.type !== 'ink' && el.fill !== defaultFill(el.type)) out.fill = el.fill;
   const rot = normRot(el.rot);
   if (rot !== 0) out.rot = String(rot);
-  for (const k of ['font', 'size', 'align', 'lang', 'asset'] as const) {
+  for (const k of ['icon', 'font', 'size', 'align', 'lang', 'asset'] as const) {
     if (e[k] !== undefined) out[k] = String(e[k]);
   }
   if (el.type === 'ink') out.pts = encodeInk(el.pts);

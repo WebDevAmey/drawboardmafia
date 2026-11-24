@@ -38,7 +38,7 @@ export interface NodeBase extends Style {
 }
 
 export type ShapeType = 'box' | 'ellipse' | 'diamond' | 'cylinder';
-export interface ShapeEl extends NodeBase { type: ShapeType; label?: string; font?: Font; size?: FontSize }
+export interface ShapeEl extends NodeBase { type: ShapeType; label?: string; font?: Font; size?: FontSize; /** pictogram name, see render/icons */ icon?: string }
 export interface TextEl extends NodeBase { type: 'text' | 'note'; text: string; font?: Font; size?: FontSize; align?: Align }
 export interface CodeEl extends NodeBase { type: 'code'; text: string; lang?: string }
 export interface FrameEl extends NodeBase { type: 'frame'; name: string; members: Id[] }

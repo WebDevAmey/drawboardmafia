@@ -37,6 +37,7 @@ function nodeArb(id: string, ids: string[]): fc.Arbitrary<Element> {
       fsize: maybe(fc.constantFrom(1, 2, 3, 4) as fc.Arbitrary<1 | 2 | 3 | 4>),
       align: maybe(fc.constantFrom('l', 'c', 'r') as fc.Arbitrary<'l' | 'c' | 'r'>),
       lang: maybe(fc.constantFrom('ts', 'python', 'c++')),
+      icon: maybe(fc.constantFrom('server', 'cloud', 'api-2')),
       members: fc.subarray(ids, { maxLength: Math.min(4, ids.length) }),
       asset: fc.stringMatching(/^[a-f0-9]{64}\.png$/),
       pts: fc.array(fc.tuple(coord, coord, fc.oneof(fc.constant(0.5), fc.integer({ min: 0, max: 255 }).map((n) => n / 255))), { maxLength: 6 }),
@@ -52,7 +53,7 @@ function nodeArb(id: string, ids: string[]): fc.Arbitrary<Element> {
       });
       switch (type) {
         case 'box': case 'ellipse': case 'diamond': case 'cylinder':
-          return strip({ ...base, label: r.str, font: r.font, size: r.fsize }) as Element;
+          return strip({ ...base, label: r.str, font: r.font, size: r.fsize, icon: r.icon }) as Element;
         case 'text': case 'note':
           return strip({ ...base, text: r.str ?? '', font: r.font, size: r.fsize, align: r.align }) as Element;
         case 'code':

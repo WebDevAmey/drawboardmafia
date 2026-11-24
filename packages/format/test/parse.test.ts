@@ -95,3 +95,9 @@ describe('parse', () => {
     expect(parse('board 1\r\na: box "x"\r\n').diagnostics).toEqual([]);
   });
 });
+
+test('icon attribute on shapes only', () => {
+  const r = parse('board 1\ns: box "Server" icon=server\nt: text "x" icon=server\n');
+  expect(r.board.elements[0]).toMatchObject({ icon: 'server' });
+  expect(r.diagnostics.map((d) => d.line)).toEqual([3]);
+});

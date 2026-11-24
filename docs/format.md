@@ -71,6 +71,7 @@ Attributes are written in this canonical order, and defaults are omitted:
 
 | Key | Applies to | Values | Default |
 |---|---|---|---|
+| `icon` | shapes | pictogram name, e.g. `server`, `cloud`, `queue` (unknown names draw no icon) | (none) |
 | `fill` | nodes except ink | colour or `none` | `none` (`yellow` for note, `gray` for code) |
 | `stroke` | all | colour | `ink` |
 | `width` | all | `1`, `2`, `4` | `2` |
