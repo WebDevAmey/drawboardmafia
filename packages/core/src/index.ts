@@ -3,3 +3,4 @@ export * from './palette';
 export * from './defaults';
 export * from './geometry';
 export * from './place';
+export * from './store';
