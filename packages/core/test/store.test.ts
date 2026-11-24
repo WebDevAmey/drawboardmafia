@@ -114,3 +114,48 @@ describe('store', () => {
     expect(() => s.transact((d) => d.update('nope', { x: 1 }))).toThrow(/nope/);
   });
 });
+
+describe('undo only reverts your own changes', () => {
+  test('a remote edit to another element survives local undo', () => {
+    const s = createStore({ ...emptyBoard(), elements: [box('a'), box('b')] });
+    s.transact((d) => d.update('a', { x: 10 }));
+    s.transact((d) => d.update('b', { x: 99 }), { history: false }); // remote
+    s.undo();
+    expect(s.get().elements.map((e) => (e as { x: number }).x)).toEqual([0, 99]);
+    s.redo();
+    expect(s.get().elements.map((e) => (e as { x: number }).x)).toEqual([10, 99]);
+  });
+
+  test('undo of a create removes it; remote inserts keep their place', () => {
+    const s = createStore(emptyBoard());
+    s.transact((d) => d.put(box('mine')));
+    s.transact((d) => d.put(box('theirs')), { history: false });
+    s.undo();
+    expect(ids(s.get())).toEqual(['theirs']);
+    s.redo();
+    expect(ids(s.get())).toEqual(['mine', 'theirs']);
+  });
+
+  test('undo of a delete restores at the old index', () => {
+    const s = createStore({ ...emptyBoard(), elements: [box('a'), box('b'), box('c')] });
+    s.transact((d) => d.remove('b'));
+    s.undo();
+    expect(ids(s.get())).toEqual(['a', 'b', 'c']);
+  });
+});
+
+test('undoing a move does not revert a remote reorder', () => {
+  const s = createStore({ ...emptyBoard(), elements: [box('a'), box('b'), box('c')] });
+  s.transact((d) => d.update('a', { x: 5 }));
+  s.transact((d) => d.reorder(['c', 'b', 'a']), { history: false });
+  s.undo();
+  expect(ids(s.get())).toEqual(['c', 'b', 'a']);
+  expect((s.get().elements[2] as { x: number }).x).toBe(0);
+});
+
+test('undoing a local reorder restores the order', () => {
+  const s = createStore({ ...emptyBoard(), elements: [box('a'), box('b'), box('c')] });
+  s.transact((d) => d.reorder(['c', 'a', 'b']));
+  s.undo();
+  expect(ids(s.get())).toEqual(['a', 'b', 'c']);
+});
