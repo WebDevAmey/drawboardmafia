@@ -5,3 +5,5 @@ export { encodeInk, decodeInk } from './ink';
 export { mergeBoards, mergeText, type Conflict, type TextMergeResult } from './merge';
 export { diffBoards, formatChanges, type Change } from './diff';
 export { ATTR_ORDER } from './attrs';
+export { fromMermaid } from './import/mermaid';
+export { fromExcalidraw } from './import/excalidraw';
