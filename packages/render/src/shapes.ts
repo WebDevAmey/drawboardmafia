@@ -16,7 +16,7 @@ function strokeAttrs(n: NodeEl, ctx: Ctx) {
   };
 }
 
-function inkPath(points: number[][]): string {
+export function inkPath(points: number[][]): string {
   if (!points.length) return '';
   const d = points.reduce(
     (acc: (string | number)[], [x0, y0], i, arr) => {
