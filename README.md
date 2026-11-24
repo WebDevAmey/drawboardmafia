@@ -4,7 +4,7 @@
 
 A developer-first whiteboard where **the drawing is a text file**. You can sketch it, type it, diff it, merge it and render it in CI. The format is open, MIT-licensed and works without an account.
 
-> Status: early. The headless toolchain works: the `.board` format, the `dbm` CLI and the git merge driver. The canvas app, live collaboration and the two-way text pane are next. See the [spec](docs/superpowers/specs/2026-11-24-drawboardmafia-design.md).
+> Status: early. The `.board` format, the `dbm` CLI, the git merge driver and a first version of the canvas app (with a live two-way text pane) work. Live collaboration and open-folder are next. See the [spec](docs/superpowers/specs/2026-11-24-drawboardmafia-design.md).
 
 ## The `.board` format
 
@@ -48,6 +48,28 @@ dbm init     # adds `*.board merge=dbm` to .gitattributes and configures the dri
 
 After `dbm init`, `git merge` merges boards **property by property**. One branch can move `api` while another relabels it, both on the same line, and the result has both changes with no conflict markers. When both branches change the same property, ours wins and the conflict is printed. Element order, frame membership and header settings merge as well.
 
+## Run the app
+
+```sh
+pnpm install
+pnpm dev          # http://localhost:5191
+```
+
+| Key | Action |
+|---|---|
+| `V` `H` | Select, pan (or hold Space and drag) |
+| `R` `O` `D` | Box, ellipse, diamond |
+| `A` `P` | Arrow (drag from shape to shape to bind), freehand |
+| `T` `N` | Text, sticky note |
+| Double-click / `Enter` | Edit text (Esc or Cmd+Enter to finish) |
+| `Cmd+/` | Toggle the two-way text pane |
+| `Cmd+Z` / `Cmd+Shift+Z` | Undo / redo |
+| `Cmd+D`, `Backspace`, arrow keys | Duplicate, delete, nudge (Shift = 10px) |
+| `Cmd+C` / `Cmd+V` | Copy as `.board` text; paste `.board` text, Mermaid or plain text |
+| `Shift+1`, `Shift+2`, `Cmd+0` | Zoom to fit, zoom to selection, 100% |
+
+Boards autosave to IndexedDB as `.board` text. In the text pane, edits apply only when the text parses, so a typo never deletes anything.
+
 ## Development
 
 ```sh
@@ -61,7 +83,8 @@ pnpm build       # bundles the CLI to packages/cli/dist/dbm.js
 |---|---|
 | `packages/core` | Element schema, palette, geometry, auto-placement |
 | `packages/format` | Lexer, parser, canonical serializer, three-way merge, diff, importers |
-| `packages/render` | Board to SVG (shared text metrics, theme-aware palette) |
+| `packages/render` | Board to SVG and Canvas2D (shared geometry, theme-aware palette) |
+| `packages/app` | The whiteboard: Vite + React chrome, Canvas2D editor |
 | `packages/cli` | The `dbm` command |
 
 ## License
