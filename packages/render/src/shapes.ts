@@ -1,6 +1,7 @@
 import { bounds, type NodeEl } from '@dbm/core';
 import getStroke from 'perfect-freehand';
-import { centeredText, textSvg } from './text';
+import { ICONS, iconLayout } from './icons';
+import { centeredText, measure, textSvg } from './text';
 import { FONT_PX, dashArray, type Ctx } from './theme';
 import { tag } from './xml';
 
@@ -101,9 +102,20 @@ export function nodeSvg(n: NodeEl, ctx: Ctx, assets?: AssetResolver): string {
       break;
     }
   }
-  if ((n.type === 'box' || n.type === 'ellipse' || n.type === 'diamond' || n.type === 'cylinder') && n.label) {
-    const labelY = n.type === 'cylinder' ? cy + Math.min(h * 0.15, 16) / 2 : cy;
-    body += centeredText(n.label, cx, labelY, FONT_PX[n.size ?? 2], n.font ?? 'sans', ink);
+  if (n.type === 'box' || n.type === 'ellipse' || n.type === 'diamond' || n.type === 'cylinder') {
+    const midY = n.type === 'cylinder' ? cy + Math.min(h * 0.15, 16) / 2 : cy;
+    const px = FONT_PX[n.size ?? 2];
+    const icon = n.icon ? ICONS[n.icon] : undefined;
+    if (icon) {
+      const lh = n.label ? measure(n.label, px, n.font ?? 'sans').height : 0;
+      const L = iconLayout(w, h, !!n.label, lh);
+      const s = L.size / 24;
+      body += tag('path', {
+        d: icon.d, transform: `translate(${cx - L.size / 2} ${midY + L.iconTop}) scale(${s})`,
+        fill: 'none', stroke: ink, 'stroke-width': 1.75, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+      });
+      if (n.label) body += textSvg(n.label, { x: cx, y: midY + L.labelTop, px, font: n.font ?? 'sans', align: 'c', color: ink });
+    } else if (n.label) body += centeredText(n.label, cx, midY, px, n.font ?? 'sans', ink);
   }
   const rot = n.rot ? `rotate(${n.rot} ${cx} ${cy})` : undefined;
   return tag('g', { 'data-id': n.id, transform: rot }, body);

@@ -17,7 +17,7 @@ export interface ThemeColors {
 
 export const THEMES: Record<'light' | 'dark', ThemeColors> = {
   light: {
-    canvas: '#fbfbfa',
+    canvas: '#ffffff',
     stroke: {
       ink: '#1e1e1e', gray: '#6b6f76', red: '#d63c3c', orange: '#d9730d', yellow: '#c29a00',
       green: '#2f9e44', blue: '#1c7ed6', violet: '#7048e8',

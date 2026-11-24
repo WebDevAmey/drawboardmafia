@@ -3,6 +3,7 @@ import {
   type Id, type NodeEl, type Rect,
 } from '@dbm/core';
 import getStroke from 'perfect-freehand';
+import { ICONS, iconLayout } from './icons';
 import { inkPath } from './shapes';
 import { LINE_HEIGHT, measure } from './text';
 import { FONT_FAMILY, FONT_PX, makeCtx, type Ctx, type ThemeName } from './theme';
@@ -25,9 +26,18 @@ export interface DrawOptions {
   /** Element whose text is being edited in a DOM overlay (its text is not drawn). */
   editingId?: Id;
   images?: (asset: string) => CanvasImageSource | undefined;
+  /** Elements drawn faded (e.g. marked by the eraser). */
+  dim?: ReadonlySet<Id>;
 }
 
 type C2D = CanvasRenderingContext2D;
+
+const pathCache = new Map<string, Path2D>();
+const iconPath = (name: string, d: string) => {
+  let p = pathCache.get(name);
+  if (!p) pathCache.set(name, (p = new Path2D(d)));
+  return p;
+};
 
 export const viewportRect = (o: Pick<DrawOptions, 'camera' | 'width' | 'height'>): Rect => ({
   x: o.camera.x, y: o.camera.y, w: o.width / o.camera.zoom, h: o.height / o.camera.zoom,
@@ -176,11 +186,25 @@ function drawNode(ctx: C2D, n: NodeEl, c: Ctx, o: DrawOptions) {
       break;
     }
   }
-  if ((n.type === 'box' || n.type === 'ellipse' || n.type === 'diamond' || n.type === 'cylinder') && n.label && showText) {
+  if (n.type === 'box' || n.type === 'ellipse' || n.type === 'diamond' || n.type === 'cylinder') {
     const px = FONT_PX[n.size ?? 2];
-    const { height } = measure(n.label, px, n.font ?? 'sans');
-    const ly = n.type === 'cylinder' ? cy + Math.min(h * 0.15, 16) / 2 : cy;
-    textLines(ctx, n.label, cx, ly - height / 2, px, n.font ?? 'sans', 'center', ink);
+    const midY = n.type === 'cylinder' ? cy + Math.min(h * 0.15, 16) / 2 : cy;
+    const icon = n.icon ? ICONS[n.icon] : undefined;
+    const lh = n.label ? measure(n.label, px, n.font ?? 'sans').height : 0;
+    if (icon) {
+      const L = iconLayout(w, h, !!n.label, lh);
+      ctx.save();
+      ctx.translate(cx - L.size / 2, midY + L.iconTop);
+      ctx.scale(L.size / 24, L.size / 24);
+      ctx.setLineDash([]);
+      ctx.lineWidth = 1.75;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = ink;
+      ctx.stroke(iconPath(n.icon!, icon.d));
+      ctx.restore();
+      if (n.label && showText) textLines(ctx, n.label, cx, midY + L.labelTop, px, n.font ?? 'sans', 'center', ink);
+    } else if (n.label && showText) textLines(ctx, n.label, cx, midY - lh / 2, px, n.font ?? 'sans', 'center', ink);
   }
   ctx.restore();
 }
@@ -271,6 +295,7 @@ export function drawBoard(ctx: C2D, board: Board, o: DrawOptions) {
   const view = viewportRect(o);
   const byId = new Map<Id, Element>(board.elements.map((e) => [e.id, e]));
   for (const el of board.elements) {
+    ctx.globalAlpha = o.dim?.has(el.id) ? 0.2 : 1;
     if (isConnector(el)) drawConnector(ctx, el, byId, c, o);
     else {
       const r = bounds(el);
@@ -280,4 +305,5 @@ export function drawBoard(ctx: C2D, board: Board, o: DrawOptions) {
       drawNode(ctx, el, c, o);
     }
   }
+  ctx.globalAlpha = 1;
 }
