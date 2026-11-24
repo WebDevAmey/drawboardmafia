@@ -4,7 +4,7 @@
 
 A developer-first whiteboard where **the drawing is a text file**. You can sketch it, type it, diff it, merge it and render it in CI. The format is open, MIT-licensed and works without an account.
 
-> Status: early. The `.board` format, the `dbm` CLI, the git merge driver and a first version of the canvas app (with a live two-way text pane) work. Live collaboration and open-folder are next. See the [spec](docs/superpowers/specs/2026-11-24-drawboardmafia-design.md).
+> Status: early but usable. The `.board` format, the `dbm` CLI, the git merge driver and the canvas app work, including end-to-end encrypted live collaboration with chat, a system-design library and images. See the [spec](docs/superpowers/specs/2026-11-24-drawboardmafia-design.md).
 
 ## The `.board` format
 
@@ -52,15 +52,19 @@ After `dbm init`, `git merge` merges boards **property by property**. One branch
 
 ```sh
 pnpm install
-pnpm dev          # http://localhost:5191
+pnpm dev          # app on http://localhost:5191, relay on :5192
 ```
+
+**Live collaboration.** Click **Share**, then **Start session**. The link is copied to your clipboard; anyone who opens it joins the board and sees live edits, cursors and chat. Boards, chat and images are end-to-end encrypted with AES-GCM, and the key only lives in the link's `#fragment`, so the relay never sees content. To collaborate across machines, run `pnpm dev` on a reachable host (for example `pnpm --filter @dbm/app dev --host`) or point the app at a deployed relay with `VITE_RELAY_URL=wss://your-relay`. The relay (`packages/relay`, `pnpm relay`) is a small Node WebSocket server that holds an encrypted log per room in memory.
 
 | Key | Action |
 |---|---|
 | `V` `H` | Select, pan (or hold Space and drag) |
-| `R` `O` `D` | Box, ellipse, diamond |
-| `A` `P` | Arrow (drag from shape to shape to bind), freehand |
-| `T` `N` | Text, sticky note |
+| `R` `O` `D` | Rectangle, ellipse, diamond |
+| `A` `L` | Arrow (drag from shape to shape to bind), line |
+| `P` `E` | Freehand, eraser (sweep over things; Cmd+Z brings them back) |
+| `T` `N` `I` | Text, sticky note, image (or paste / drop an image) |
+| `B` | System design library: search, then click or drag servers, queues, caches… onto the board |
 | Double-click / `Enter` | Edit text (Esc or Cmd+Enter to finish) |
 | `Cmd+/` | Toggle the two-way text pane |
 | `Cmd+Z` / `Cmd+Shift+Z` | Undo / redo |
@@ -74,7 +78,8 @@ Boards autosave to IndexedDB as `.board` text. In the text pane, edits apply onl
 
 ```sh
 pnpm install
-pnpm test        # vitest, including property-based round-trip and merge tests
+pnpm test        # vitest, including property-based round-trip, merge and sync-convergence tests
+pnpm e2e         # two real browsers against a running `pnpm dev` (uses your local Chrome)
 pnpm typecheck
 pnpm build       # bundles the CLI to packages/cli/dist/dbm.js
 ```
@@ -84,7 +89,8 @@ pnpm build       # bundles the CLI to packages/cli/dist/dbm.js
 | `packages/core` | Element schema, palette, geometry, auto-placement |
 | `packages/format` | Lexer, parser, canonical serializer, three-way merge, diff, importers |
 | `packages/render` | Board to SVG and Canvas2D (shared geometry, theme-aware palette) |
-| `packages/app` | The whiteboard: Vite + React chrome, Canvas2D editor |
+| `packages/app` | The whiteboard: Vite + React chrome, Canvas2D editor, live sessions |
+| `packages/relay` | Encrypted WebSocket relay for live sessions |
 | `packages/cli` | The `dbm` command |
 
 ## License
