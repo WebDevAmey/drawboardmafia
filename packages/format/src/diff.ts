@@ -38,7 +38,7 @@ function show(v: unknown): string {
 }
 const endText = (e: End) => (isBoundEnd(e) ? e.id : `(${e.x},${e.y})`);
 const bare = (v: unknown) => (typeof v === 'string' ? v : show(v));
-const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 const TEXT_PROPS = ['label', 'text', 'name'];
 
 function describe(el: Element): string {

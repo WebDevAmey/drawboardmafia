@@ -1,1 +1,2 @@
-export const PACKAGE = 'cli';
+export { run } from './main';
+export type { IO } from './io';
